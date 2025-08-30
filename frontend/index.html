@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mapa MX - WeatherMon</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body style="margin:0">
+  <div id="map" style="height:100vh;"></div>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([23.6345, -102.5528], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      maxZoom:18, attribution:'© OpenStreetMap'
+    }).addTo(map);
+
+    function callApi(lat, lon) {
+      fetch(`/api/weather?lat=${lat}&lon=${lon}`)
+        .then(r => r.json())
+        .then(d => {
+          L.popup().setLatLng([lat, lon])
+            .setContent(`Clima: ${d.condition}<br>Pokémon: ${d.pokemon}`)
+            .openOn(map);
+        })
+        .catch(e => alert('Error al llamar API: ' + e));
+    }
+
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      callApi(lat.toFixed(4), lng.toFixed(4));
+    });
+  </script>
+</body>
+</html>
