@@ -3,33 +3,96 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mapa MX - WeatherMon</title>
+  <title>Mapa MX - WeatherMon con Clima Real</title>
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
 </head>
 <body style="margin:0">
   <div id="map" style="height:100vh;"></div>
+
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
   <script>
-    const map = L.map('map').setView([23.6345, -102.5528], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      maxZoom:18, attribution:'© OpenStreetMap'
-    }).addTo(map);
+const map = L.map('map').setView([23.6345, -102.5528], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+  attribution: '© OpenStreetMap'
+}).addTo(map);
 
-    function callApi(lat, lon) {
-      fetch(`/api/weather?lat=${lat}&lon=${lon}`)
-        .then(r => r.json())
-        .then(d => {
-          L.popup().setLatLng([lat, lon])
-            .setContent(`Clima: ${d.condition}<br>Pokémon: ${d.pokemon}`)
-            .openOn(map);
-        })
-        .catch(e => alert('Error al llamar API: ' + e));
+const markersCluster = L.markerClusterGroup();
+map.addLayer(markersCluster);
+
+// Ajuste dinámico del tamaño de la cuadrícula según zoom
+function getStep(zoom) {
+  return Math.max(0.05, Math.pow(2, 8 - zoom));
+}
+
+// Generar puntos de la cuadrícula visibles
+function generarPuntos(bounds, zoom) {
+  const step = getStep(zoom);
+  const puntos = [];
+  for (let lat = bounds.getSouth(); lat <= bounds.getNorth() + 0.0001; lat += step) {
+    for (let lon = bounds.getWest(); lon <= bounds.getEast() + 0.0001; lon += step) {
+      puntos.push({lat: parseFloat(lat.toFixed(4)), lon: parseFloat(lon.toFixed(4))});
     }
+  }
+  return puntos;
+}
 
-    map.on('click', (e) => {
-      const { lat, lng } = e.latlng;
-      callApi(lat.toFixed(4), lng.toFixed(4));
-    });
+// Cache local para evitar llamadas repetidas a la API
+const cachePokemons = {};
+
+async function obtenerPokemon(lat, lon) {
+  const key = `${lat},${lon}`;
+  if (cachePokemons[key]) return cachePokemons[key];
+
+  try {
+    const r = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+    const data = await r.json();
+    cachePokemons[key] = data.pokemon || 'Eevee';
+    return cachePokemons[key];
+  } catch(e) {
+    console.error('Error fetch clima:', e);
+    return 'Eevee';
+  }
+}
+
+// Actualizar mapa y markers
+async function actualizarMapa() {
+  markersCluster.clearLayers();
+  const bounds = map.getBounds();
+  const zoom = map.getZoom();
+  const puntos = generarPuntos(bounds, zoom);
+
+  // Limitar cantidad de puntos por request para no saturar la API
+  const maxPuntos = 200; 
+  const puntosMostrar = puntos.slice(0, maxPuntos);
+
+  // Crear markers en paralelo
+  const promises = puntosMostrar.map(async d => {
+    const pokemon = await obtenerPokemon(d.lat, d.lon);
+    const icon = L.icon({ iconUrl: `/icons/${pokemon}.png`, iconSize: [32,32] });
+    return L.marker([d.lat, d.lon], {icon});
+  });
+
+  const markers = await Promise.all(promises);
+  markers.forEach(marker => markersCluster.addLayer(marker));
+}
+
+// Inicial y al mover/zoom
+actualizarMapa();
+map.on('moveend', actualizarMapa);
+map.on('zoomend', actualizarMapa);
+
   </script>
 </body>
 </html>
+
+
+
+
+
+
